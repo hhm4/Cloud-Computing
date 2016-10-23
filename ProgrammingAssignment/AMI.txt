@@ -1,0 +1,472 @@
+
+I) EC2 Instance Creation : 
+
+  1. AWS Service -> EC2
+
+  2. Launch Instance -> Choose An AMI: ami-2d39803a -> Select
+
+  3. Choose An Instance Type : t2.medium
+
+  4. Configure Instance Details : 
+
+  Number of Instances : 4
+  Network : default
+  Subnet : default in us-east-1a 
+  Auto-assign Public IP: Enable
+
+  5. Next -> Add Storage:
+
+  Size: 30 (GiB)
+
+  6. Next -> Tag Instance:
+
+  For Instance 1:
+  Key: Name
+  Value: Hadoop_Cloud_Master
+
+  For Instance 2:
+  Key: Name
+  Value: Hadoop_Cloud_Slave1
+
+  For Instance 3:
+  Key: Name
+  Value: Hadoop_Cloud_Slave2
+
+  For Instance 4:
+  Key: Name
+  Value: Hadoop_Cloud_Slave3
+
+  7. Configure Secutiy Group:
+
+  Select An Existing Security Group
+
+  Default Access
+  ALL TCP Port with Inbound 0.0.0.0
+
+  8. Review and Lanunch
+
+  9. Launch
+
+II)			Commands used to setup Hadoop in Fully distributed mode
+
+  Hadoop Fully Distributed Mode Setup:
+
+
+  1. 	local$ sudo chmod 600 ~/.ssh/CloudKeyPair.pem 
+
+  2. 	local$ ssh -i ~/.ssh/CloudKeyPair.pem ubuntu@ec2-52-55-2-64.compute-1.amazonaws.com
+
+
+  	a)			SSH Configuration
+
+
+  3. 	local$ vim ~/.ssh/config
+
+
+  						-File-Content-Begins-
+  Host namenode
+    HostName ec2-52-55-2-64.compute-1.amazonaws.com
+    User ubuntu
+    IdentityFile ~/.ssh/CloudKeyPair.pem
+
+  Host datanode1
+    HostName ec2-52-55-125-255.compute-1.amazonaws.com
+    User ubuntu
+    IdentityFile ~/.ssh/CloudKeyPair.pem
+
+  Host datanode2
+    HostName ec2-52-54-214-136.compute-1.amazonaws.com
+    User ubuntu
+    IdentityFile ~/.ssh/CloudKeyPair.pem
+
+  Host datanode3
+    HostName ec2-52-20-15-108.compute-1.amazonaws.com
+    User ubuntu
+    IdentityFile ~/.ssh/CloudKeyPair.pem
+
+
+  						-File-Content-Ends-
+
+
+
+  	b)			Passwordless SSH
+
+
+  4. 	local$ scp -i ~/.ssh/CloudKeyPair.pem ~/.ssh/config namenode:~/.ssh
+
+  5. 	local$ ssh namenode
+
+  6. 	namenode$ ssh-keygen -f ~/.ssh/id_rsa -t rsa -P ""
+
+  7. 	namenode$ cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+
+  8.  namenode$ cat ~/.ssh/id_rsa.pub | ssh datanode1 'cat >> ~/.ssh/authorized_keys'
+  	namenode$ cat ~/.ssh/id_rsa.pub | ssh datanode2 'cat >> ~/.ssh/authorized_keys'
+  	namenode$ cat ~/.ssh/id_rsa.pub | ssh datanode3 'cat >> ~/.ssh/authorized_keys'
+  	
+
+  9.	namenode$ ssh ubuntu@ec2-52-55-2-64.compute-1.amazonaws.com
+
+  	
+  	c) 			Install Hadoop
+
+
+  10.	allnodes$ sudo apt-get update
+
+  11.	allnodes$ sudo apt-get install openjdk-7-jdk
+
+  12.	allnodes$ java -version 
+
+  13.	allnodes$ wget http://apache.mirrors.tds.net/hadoop/common/hadoop-2.7.1/hadoop-2.7.1.tar.gz -P ~/Downloads
+
+  14.	allnodes$ sudo tar zxvf ~/Downloads/hadoop-* -C /usr/local
+
+  15.	allnodes$ sudo mv /usr/local/hadoop-* /usr/local/hadoop
+
+
+  	d)			Environment Variables
+
+
+  16.	allnodes$ vim ~/.profile
+
+  						-File-Content-Begins-
+
+  export JAVA_HOME=/usr
+  export PATH=$PATH:$JAVA_HOME/bin
+
+  export HADOOP_HOME=/usr/local/hadoop
+  export PATH=$PATH:$HADOOP_HOME/bin
+
+  export HADOOP_CONF_DIR=/usr/local/hadoop/etc/hadoop
+
+  						-File-Content-Ends-
+
+  17.	allnodes$ . ~/.profile
+
+  		
+  	e)			Hadoop Configurations
+
+
+  		i) Common Hadoop Configurations on all Nodes
+
+
+  18.	allnodes$ sudo vim $HADOOP_CONF_DIR/hadoop-env.sh
+
+  19.	allnodes$ vim $HADOOP_CONF_DIR/hadoop-env.sh
+  		
+  						-File-Content-Begins-
+
+  # The java implementation to use.
+  export JAVA_HOME=/usr
+
+  						-File-Content-Ends-
+
+
+  20.	allnodes$ sudo vim $HADOOP_CONF_DIR/core-site.xml		
+
+  						-File-Content-Begins-
+
+  <configuration>
+    <property>
+      <name>fs.defaultFS</name>
+      <value>hdfs://ec2-52-55-2-64.compute-1.amazonaws.com:9000</value>   <!-- namenode_public_dns-->
+    </property>
+  </configuration>
+
+  						-File-Content-Ends-
+
+
+  21.	allnodes$ sudo vim $HADOOP_CONF_DIR/yarn-site.xml
+  	
+
+  						-File-Content-Begins-
+  <configuration>
+
+  <!-- Site specific YARN configuration properties -->
+
+    <property>
+      <name>yarn.nodemanager.aux-services</name>
+      <value>mapreduce_shuffle</value>
+    </property> 
+    <property>
+      <name>yarn.nodemanager.aux-services.mapreduce.shuffle.class</name>
+      <value>org.apache.hadoop.mapred.ShuffleHandler</value>
+    </property>
+    <property>
+      <name>yarn.resourcemanager.hostname</name>
+      <value>ec2-52-55-2-64.compute-1.amazonaws.com</value>	   <!-- namenode_public_dns-->
+    </property>
+  </configuration>
+
+  						-File-Content-Ends-
+
+
+  21.	allnodes$ sudo cp $HADOOP_CONF_DIR/mapred-site.xml.template $HADOOP_CONF_DIR/mapred-site.xml
+
+  22.	allnodes$ sudo vim $HADOOP_CONF_DIR/mapred-site.xml
+
+  						-File-Content-Begins-
+
+  <configuration>
+    <property>
+      <name>mapreduce.jobtracker.address</name>
+      <value>ec2-52-55-2-64.compute-1.amazonaws.com:54311</value>  <!-- namenode_public_dns-->
+    </property>
+    <property>
+      <name>mapreduce.framework.name</name>
+      <value>yarn</value>
+    </property>
+  </configuration>
+
+  						-File-Content-Ends-
+
+
+  		ii)			NameNode Specific Configurations	
+
+  22.	allnodes$ echo $(hostname)
+
+  23.	namenode$ sudo vim /etc/hosts
+
+  						-File-Content-Begins-
+
+  127.0.0.1 localhost
+  ec2-52-55-2-64.compute-1.amazonaws.com    ip-172-31-5-213
+  ec2-52-55-125-255.compute-1.amazonaws.com ip-172-31-12-22
+  ec2-52-54-214-136.compute-1.amazonaws.com ip-172-31-12-21
+  ec2-52-20-15-108.compute-1.amazonaws.com  ip-172-31-12-20
+
+  						-File-Content-Ends-
+
+
+  24. namenode$ sudo vim $HADOOP_CONF_DIR/hdfs-site.xml
+
+  						-File-Content-Begins-
+
+  <configuration>
+    <property>
+      <name>dfs.replication</name>
+      <value>3</value>
+    </property>
+    <property>
+      <name>dfs.namenode.name.dir</name>
+      <value>file:///usr/local/hadoop/hadoop_data/hdfs/namenode</value>
+    </property>
+  </configuration>
+
+  						-File-Content-Ends-
+
+
+  25.	namenode$ sudo mkdir -p $HADOOP_HOME/hadoop_data/hdfs/namenode
+
+  26. namenode$ sudo vim $HADOOP_CONF_DIR/masters
+
+
+  						-File-Content-Begins-
+  ip-172-31-5-213
+
+
+  						-File-Content-Ends-
+
+
+  27. namenode$ sudo vim $HADOOP_CONF_DIR/slaves
+
+  						-File-Content-Begins-
+  ip-172-31-12-22
+  ip-172-31-12-21
+  ip-172-31-12-20
+  						-File-Content-Ends-
+
+  28.	namenode$ sudo chown -R ubuntu $HADOOP_HOME
+
+
+
+  			iii) 		DataNode Specific Configurations
+
+
+  29. datanodes$ sudo vim $HADOOP_CONF_DIR/hdfs-site.xml
+
+  						-File-Content-Begins-
+
+  <configuration>
+    <property>
+      <name>dfs.replication</name>
+      <value>2</value>
+    </property>
+    <property>
+      <name>dfs.datanode.data.dir</name>
+      <value>file:///usr/local/hadoop/hadoop_data/hdfs/datanode</value>
+    </property>
+  </configuration>
+
+  						-File-Content-Ends-
+
+  30. datanodes$ sudo mkdir -p $HADOOP_HOME/hadoop_data/hdfs/datanode		
+
+  31. datanodes$ sudo chown -R ubuntu $HADOOP_HOME
+
+
+  				iv)		Start Hadoop Cluster	
+
+
+  32.	namenode$ hdfs namenode -format
+
+  33.	namenode$ $HADOOP_HOME/sbin/start-dfs.sh
+   				
+  34.	ec2-52-55-2-64.compute-1.amazonaws.com:50070   //namenode_public_dns
+
+  35.	namenode$ $HADOOP_HOME/sbin/start-yarn.sh
+
+  36.	namenode$ $HADOOP_HOME/sbin/mr-jobhistory-daemon.sh start historyserver
+
+  37.	namenode$ jps
+
+  38.	datanodes$ jps
+
+  				v) Restart Hadoop Cluster
+
+  38.	namenode$ $HADOOP_HOME/sbin/stop-dfs.sh
+
+  39.	namenode$ hdfs namenode -format
+
+  40. datanodes$ cd /usr/local/hadoop/hadoop_data/hdfs/datanode/ 
+
+  41.	datanodes$ rm -Rf * 
+
+  42.	namenode$ $HADOOP_HOME/sbin/start-dfs.sh
+
+  43. If the machine was restarted, Yarn and historyserver needs to be started again.
+
+
+
+III)  AMI Creation :
+
+  1. Select the EC2 Machine in AWS Cloud
+
+  2. Actions -> Instance State -> Stop 
+
+  3. Actions -> Image -> Create Image
+
+  4. Provide the following details:
+
+  Image Name: Mohan_Hadoop_Master
+  Image Description: This image contains the setup of hadoop with master configuration
+  Edit the Tag Name:Mohan_Hadoop_Master
+
+  5. Create 
+
+  6. Repeat the same steps for Slave 
+
+  Image Name: Mohan_Hadoop_Slave
+  Image Description: This image contains the setup of hadoop with slave configuration
+  Edit the Tag Name:  Mohan_Hadoop_Slave
+
+  7. Local AMI IDs for the created image in AWS
+
+  AMI ID for Master : ami-9586d082
+  AMI ID for Slave : ami-7486d063
+
+  
+IV) Steps to Set Up AWS CLI to create and upload EC2 bundle in S3 :
+
+Follow  all the steps in both Master and Slave EC2 instances:
+
+1. curl -O https://bootstrap.pypa.io/get-pip.py
+
+2. sudo python get-pip.py
+
+3. sudo pip install awscli
+
+4. sudo pip install awscli --ignore-installed six
+
+5. sudo apt-get install unzip
+
+6. curl "https://s3.amazonaws.com/aws-cli/awscli-bundle.zip" -o "awscli-bundle.zip"
+
+7. unzip awscli-bundle.zip
+
+8. sudo ./awscli-bundle/install -i /usr/local/aws -b /usr/local/bin/aws
+
+9. aws configure
+
+Enter the following details while prompted:
+
+WS Access Key ID [None]: <Access Key>
+AWS Secret Access Key [None]: <Secret Key>
+Default region name [None]: <Region Name>
+Default output format [None]: ENTER
+
+10. sudo apt-get install ec2-bundle-vol
+ 
+ If not works 
+
+11. sudo apt-get install ec2-ami-tools
+
+V) Create and Upload Bundle in S3
+
+ Create  S3 Buckets in Oregon Region :
+
+1. AWS -> S3 -> Create Bucket -> Bucket Name: 'mohan-hhm4' and Region : 'Oregon'
+
+2. AWS -> S3 -> Create Bucket -> Bucket Name: 'mohan-hhm4-slave' and Region : 'Oregon'
+
+3. To Create Bundle  -> Execute in both master and slave nodes:
+
+sudo ec2-bundle-vol --destination /mnt --privatekey pk-UGVI4SBZNDC37GNZKF7ALSFYEZKOR2KC.pem --cert cert-UGVI4SBZNDC37GNZKF7ALSFYEZKOR2KC.pem --user 631198399116 --exclude /home --prefix image-20161017 --arch x86_64
+
+4. To Upload Bundle in S3:
+
+Master:
+ sudo ec2-upload-bundle -b mohan-hhm4 /instance-snapshots/image-20161017 --manifest /mnt/image-20161017.manifest.xml --access-key <Access Key> --secret-key <Secret Key>
+
+Slave: 
+
+sudo ec2-upload-bundle -b mohan-hhm4-slave /instance-snapshots/image-20161017 --manifest /mnt/image-20161017.manifest.xml --access-key <Access Key> --secret-key <Secret Key>
+
+
+VI) Register a New AMI :
+
+1. Right click on the Master AMI -> Register New AMI -> 
+
+AMI Manifest Path :  https://s3.amazonaws.com:80/mohan-hhm4/image-20161017.manifest.xml
+
+AMI Name:     Mohan-Hadoop-Master
+
+2. Click on Register
+
+3. Right click on the Slave AMI -> Register New AMI -> 
+
+AMI Manifest Path :  https://s3.amazonaws.com:80/mohan-hhm4-slave/image-20161017.manifest.xml
+
+AMI Name:     Mohan-Hadoop-Slave
+
+4. Click on Register
+
+
+The AMI are publicly available now : 
+
+Region : Oregon
+
+Hadoop Master AMI: 
+
+AMI ID :  ami-aea702ce
+AMI Name: Mohan-Hadoop-Master
+Name:     Mohan-Hadoop-Master
+Source:   mohan-hhm4/image-20161017.manifest.xml
+
+Hadoop Slave AMI :
+
+AMI ID :  ami-afa702cf
+AMI Name: Mohan-Hadoop-Master
+Name:     Mohan-Hadoop-Master 
+Source:   mohan-hhm4-slave/image-20161017.manifest.xml
+
+
+
+
+
+
+
+
+
+
+
